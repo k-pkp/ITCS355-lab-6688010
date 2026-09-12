@@ -104,10 +104,17 @@ jobs:
           python scripts/export_model.py --out reports/model.joblib
           pytest -q tests/test_integration_container.py
 
-      - name: Verify the reproduced metric against the README claim
-        # The claim in README.md is graded. Checking it here means a change that moves the
-        # metric fails the build instead of surviving until a grader runs `make verify`.
-        run: python scripts/verify_metric.py
+      - name: Verify the reproduced metric against the Lab 1 README claim
+        # Runs in lab1, not lab4. verify_metric.py compares the metric it just produced
+        # against the claim line in the README beside it, and that claim is a Lab 1
+        # deliverable — it lives in lab1/README.md. Pointing this step at lab4 made CI
+        # fail on main with "README.md has no claim line", which is the workflow being
+        # wrong rather than the metric having moved.
+        working-directory: lab1
+        run: |
+          python scripts/make_dataset.py
+          python -m src.train --metrics-out reports/metrics.json
+          python scripts/verify_metric.py
 
       # Images are tagged with the commit SHA, never `latest`. A `latest` tag makes it
       # impossible to say which code is serving, which is the question you will be asked
