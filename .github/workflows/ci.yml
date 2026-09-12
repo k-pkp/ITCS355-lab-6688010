@@ -1,0 +1,114 @@
+# ITCS355 Lab 4 — continuous integration.
+#
+# The sequence matters: cheap checks first, so a schema mistake fails in 30 seconds
+# rather than after a build. Deploy is in cd.yml and runs only on main, only on green.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Every path in this file is relative to lab4/. The repository is organised one folder per
+# lab, each self-contained, so a workflow at the root has to choose one; lab4 is the lab
+# whose deliverable these files are. The five folders hold identical code.
+defaults:
+  run:
+    working-directory: lab4
+
+permissions:
+  contents: read
+  id-token: write        # required for OIDC. See cd.yml — no long-lived keys anywhere.
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install --upgrade pip
+          # --require-hashes is what makes the lock file mean something in CI. Without it
+          # CI would happily install a republished wheel that the Docker build, which does
+          # pass the flag, would then reject — and the two would disagree about what green
+          # means.
+          pip install --require-hashes -r requirements.txt
+
+      - name: Lint
+        # ruff is pinned in requirements.txt and installed above. Installing it unpinned
+        # here would let a new ruff release fail this build on unchanged code.
+        run: ruff check src/ service/ monitoring/ scripts/ tests/
+
+      - name: Portability audit
+        run: python scripts/portability_audit.py
+
+      - name: Generate dataset
+        run: python scripts/make_dataset.py
+
+      - name: Unit tests
+        # No network, no model, no data file. First because they are the cheapest thing
+        # that can fail.
+        run: pytest -q tests/test_drift.py
+
+      - name: Data contract tests
+        run: pytest -q tests/test_data.py
+
+      - name: Model behaviour tests
+        run: pytest -q tests/test_model_behaviour.py
+
+      - name: Service tests
+        run: pytest -q tests/test_service.py
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The integration test below runs make_dataset/train/export on the runner to
+      # produce the artefact the serving container is then asked to serve, so this job
+      # needs the same interpreter and pins as the test job.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install --upgrade pip
+          pip install --require-hashes -r requirements.txt
+
+      - name: Build training image
+        run: docker buildx build --platform linux/amd64 -t itcs355:${{ github.sha }} --load .
+
+      - name: Build serving image
+        run: docker buildx build --platform linux/amd64 -f service/Dockerfile.serve -t itcs355-serve:${{ github.sha }} --load .
+
+      - name: Integration test
+        # tests/test_integration_container.py builds the serving image, starts it, and
+        # drives it over HTTP: readiness, a prediction, a rejected out-of-range row, and
+        # the batch cap. It asserts on the response shape and the model version, which a
+        # `grep -q probability` cannot do, and it cleans the container up on failure.
+        run: |
+          python scripts/make_dataset.py
+          python -m src.train --metrics-out reports/metrics.json
+          python scripts/export_model.py --out reports/model.joblib
+          pytest -q tests/test_integration_container.py
+
+      - name: Verify the reproduced metric against the README claim
+        # The claim in README.md is graded. Checking it here means a change that moves the
+        # metric fails the build instead of surviving until a grader runs `make verify`.
+        run: python scripts/verify_metric.py
+
+      # Images are tagged with the commit SHA, never `latest`. A `latest` tag makes it
+      # impossible to say which code is serving, which is the question you will be asked
+      # during an incident.

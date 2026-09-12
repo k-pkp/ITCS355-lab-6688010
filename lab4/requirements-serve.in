@@ -1,0 +1,12 @@
+# Serving dependencies. Source of truth; compile to requirements-serve.txt WITH HASHES:
+#   uv pip compile --generate-hashes --python-version 3.11 requirements-serve.in -o requirements-serve.txt
+# Deliberately smaller than requirements.in: the serving image has no reason to carry
+# pytest, ruff, or the training stack's extras.
+fastapi==0.141.1
+uvicorn==0.34.0
+pydantic==2.13.5
+pandas==3.0.2
+numpy==2.4.4
+scikit-learn==1.8.0
+mlflow==3.16.0
+joblib==1.4.2

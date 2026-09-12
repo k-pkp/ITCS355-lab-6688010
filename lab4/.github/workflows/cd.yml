@@ -1,0 +1,157 @@
+# ITCS355 Lab 4 — continuous deployment.
+#
+# Runs only on main, only after CI is green. Credentials come from Workload Identity
+# Federation, not from stored keys: GitHub mints a short-lived OIDC token, GCP exchanges it
+# for a service-account credential that expires in an hour, and nothing long-lived is ever
+# written to a repository secret. The two secrets below are identifiers, not credentials —
+# knowing them grants nothing without a token from this repository on this branch.
+#
+# The AWS and Azure blocks that shipped with the scaffold are deleted rather than left
+# commented out. Dead configuration for providers this project does not use is how a
+# workflow ends up with a stale role ARN that somebody later "fixes" by pasting a key in.
+
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+# Every path in this file is relative to lab4/. The repository is organised one folder per
+# lab, each self-contained, so a workflow at the root has to choose one; lab4 is the lab
+# whose deliverable these files are. The five folders hold identical code.
+defaults:
+  run:
+    working-directory: lab4
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-staging:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Deploy exactly the commit CI went green on, not whatever main has drifted to
+          # since. Without this, a merge landing during the CI run would be deployed
+          # untested.
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install --upgrade pip
+          pip install --require-hashes -r requirements.txt
+          pip install google-cloud-storage google-cloud-aiplatform google-cloud-monitoring
+
+      - name: Authenticate to GCP via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Write cloud.env from repository configuration
+        # cloud.env is gitignored, so CI rebuilds it from variables. None of these are
+        # secrets: they are project and region identifiers, and they are the same values a
+        # grader would see. The credential is the OIDC token minted in the step above.
+        run: |
+          cat > cloud.env <<'ENVFILE'
+          CLOUD_PROVIDER=gcp
+          PROJECT_ID=${{ vars.PROJECT_ID }}
+          REGION=${{ vars.REGION }}
+          BLOB_URI=${{ vars.BLOB_URI }}
+          CONTAINER_REGISTRY=${{ vars.CONTAINER_REGISTRY }}
+          MLFLOW_TRACKING_URI=${{ vars.MLFLOW_TRACKING_URI }}
+          MODEL_REGISTRY_NAME=${{ vars.MODEL_REGISTRY_NAME }}
+          IDENTITY_REF=${{ vars.IDENTITY_REF }}
+          BUDGET_LIMIT_THB=${{ vars.BUDGET_LIMIT_THB }}
+          ENVFILE
+
+      - name: Build and push the SHA-tagged serving image
+        # Tagged by commit SHA, never `latest`. push_image returns the digest reference,
+        # and the digest — not the tag — is what the deploy step pins, because a tag can be
+        # moved onto other bytes and a digest cannot.
+        id: push
+        run: |
+          docker buildx build --platform linux/amd64 \
+            -f service/Dockerfile.serve \
+            -t itcs355-serve:${{ github.event.workflow_run.head_sha }} --load .
+          python - <<'PYTHON' | tee image-digest.txt
+          from src import config
+          from cloudlayer.factory import get_adapter
+          import os
+          sha = os.environ["HEAD_SHA"]
+          adapter = get_adapter(config.load())
+          print(adapter.push_image(f"itcs355-serve:{sha}"))
+          PYTHON
+          echo "digest=$(tail -1 image-digest.txt)" >> "$GITHUB_OUTPUT"
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Deploy to staging
+        run: |
+          python - <<'PYTHON'
+          import os
+          from src import config
+          from cloudlayer.factory import get_adapter
+
+          loaded_config = config.load()
+          adapter = get_adapter(loaded_config)
+          endpoint = adapter.deploy(
+              model_ref=os.environ["MODEL_REF"],
+              endpoint="itcs355-staging",
+              instance="n1-standard-4",
+          )
+          print(f"deployed to {endpoint}")
+          with open(os.environ["GITHUB_ENV"], "a") as handle:
+              handle.write(f"STAGING_ENDPOINT={endpoint}\n")
+          PYTHON
+        env:
+          MODEL_REF: ${{ vars.STAGING_MODEL_REF }}
+
+      - name: Smoke test
+        # Three known payloads, and each asserts something different: a healthy machine
+        # must score low, a worn one must score higher than the healthy one, and an
+        # out-of-range reading must be refused rather than scored. A deploy that returns
+        # 200 for all three inputs has not been smoke-tested, it has been pinged.
+        run: |
+          python - <<'PYTHON'
+          import os
+          from src import config
+          from cloudlayer.factory import get_adapter
+
+          adapter = get_adapter(config.load())
+          endpoint = os.environ["STAGING_ENDPOINT"]
+
+          healthy = {"temp_c": 66.0, "vibration_mm_s": 1.4, "pressure_kpa": 330.0,
+                     "hours_since_service": 50.0, "load_pct": 30.0, "ambient_humidity": 50.0}
+          worn = {"temp_c": 92.0, "vibration_mm_s": 7.5, "pressure_kpa": 300.0,
+                  "hours_since_service": 9000.0, "load_pct": 95.0, "ambient_humidity": 70.0}
+          impossible = {**healthy, "temp_c": 999.0}
+
+          healthy_score = adapter.invoke(endpoint, healthy)["probability"]
+          worn_score = adapter.invoke(endpoint, worn)["probability"]
+          print(f"healthy={healthy_score:.4f} worn={worn_score:.4f}")
+
+          assert 0.0 <= healthy_score <= 1.0, healthy_score
+          assert healthy_score < 0.5, f"a healthy machine scored {healthy_score}"
+          assert worn_score > healthy_score, "wear did not raise the risk"
+
+          try:
+              adapter.invoke(endpoint, impossible)
+          except Exception as error:
+              print(f"out-of-range reading correctly refused: {type(error).__name__}")
+          else:
+              raise AssertionError("endpoint scored a temperature no machine reaches")
+          PYTHON

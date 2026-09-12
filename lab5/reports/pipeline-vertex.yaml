@@ -1,0 +1,150 @@
+# PIPELINE DEFINITION
+# Name: itcs355-training-pipeline
+# Description: ITCS355 training pipeline
+components:
+  comp-condition-1:
+    dag:
+      tasks:
+        deploy-staging:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-deploy-staging
+          dependentTasks:
+          - register
+          taskInfo:
+            name: deploy-staging
+        register:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-register
+          taskInfo:
+            name: register
+    inputDefinitions:
+      parameters:
+        pipelinechannel--evaluate-gate_decision:
+          parameterType: STRING
+  comp-deploy-staging:
+    executorLabel: exec-deploy-staging
+  comp-evaluate:
+    executorLabel: exec-evaluate
+    outputDefinitions:
+      parameters:
+        gate_decision:
+          parameterType: STRING
+  comp-ingest:
+    executorLabel: exec-ingest
+  comp-register:
+    executorLabel: exec-register
+  comp-train:
+    executorLabel: exec-train
+  comp-validate:
+    executorLabel: exec-validate
+deploymentSpec:
+  executors:
+    exec-deploy-staging:
+      container:
+        command:
+        - python
+        - scripts/deploy.py
+        - --target
+        - staging
+        image: asia-southeast1-docker.pkg.dev/itcs355-6688010/itcs355/itcs355:8512d6e
+    exec-evaluate:
+      container:
+        args:
+        - --decision-out
+        - '{{$.outputs.parameters[''gate_decision''].output_file}}'
+        command:
+        - python
+        - scripts/evaluation_gate.py
+        - --metrics
+        - /outputs/metrics.json
+        image: asia-southeast1-docker.pkg.dev/itcs355-6688010/itcs355/itcs355:8512d6e
+    exec-ingest:
+      container:
+        command:
+        - python
+        - scripts/make_dataset.py
+        image: asia-southeast1-docker.pkg.dev/itcs355-6688010/itcs355/itcs355:8512d6e
+    exec-register:
+      container:
+        command:
+        - python
+        - scripts/register.py
+        image: asia-southeast1-docker.pkg.dev/itcs355-6688010/itcs355/itcs355:8512d6e
+    exec-train:
+      container:
+        command:
+        - python
+        - -m
+        - src.train
+        - --metrics-out
+        - /outputs/metrics.json
+        image: asia-southeast1-docker.pkg.dev/itcs355-6688010/itcs355/itcs355:8512d6e
+    exec-validate:
+      container:
+        command:
+        - pytest
+        - -q
+        - tests/test_data.py
+        image: asia-southeast1-docker.pkg.dev/itcs355-6688010/itcs355/itcs355:8512d6e
+pipelineInfo:
+  description: ITCS355 training pipeline
+  name: itcs355-training-pipeline
+root:
+  dag:
+    tasks:
+      condition-1:
+        componentRef:
+          name: comp-condition-1
+        dependentTasks:
+        - evaluate
+        inputs:
+          parameters:
+            pipelinechannel--evaluate-gate_decision:
+              taskOutputParameter:
+                outputParameterKey: gate_decision
+                producerTask: evaluate
+        taskInfo:
+          name: gate-passed
+        triggerPolicy:
+          condition: inputs.parameter_values['pipelinechannel--evaluate-gate_decision']
+            == 'pass'
+      evaluate:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate
+        dependentTasks:
+        - train
+        taskInfo:
+          name: evaluate
+      ingest:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-ingest
+        taskInfo:
+          name: ingest
+      train:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train
+        dependentTasks:
+        - validate
+        taskInfo:
+          name: train
+      validate:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-validate
+        dependentTasks:
+        - ingest
+        taskInfo:
+          name: validate
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.17.0

@@ -1,0 +1,70 @@
+# Lab 5 — pipeline as a neutral DAG.
+#
+# This file describes WHAT runs. cloudlayer/pipelines.py compiles it into SageMaker
+# Pipelines, Azure ML Pipelines, or Vertex AI Pipelines. Keeping the DAG here rather than
+# in provider SDK calls is what makes the pipeline portable, and it is why every step is
+# a container rather than a function.
+
+name: itcs355-training-pipeline
+# Sundays at 02:00. Weekly, not daily: the label this model is trained on is
+# failed_within_7d, so a day's extra data changes the training set by well under 1% and
+# cannot change the answer by more than the seed noise (sd 0.0087 test ROC AUC). Retraining
+# daily would spend seven times the compute to re-derive the same model and would put six
+# more unnecessary deployments a week in front of the canary. 02:00 Sunday is chosen so
+# that a failed run has a working day in front of it before anyone depends on the result,
+# and the freshness SLO in monitoring/slo.yaml allows 30 days, which is three consecutive
+# failed runs of headroom.
+schedule: "0 2 * * 0"
+
+steps:
+  - name: ingest
+    image: "${CONTAINER_REGISTRY}/itcs355:${IMAGE_TAG}"
+    command: ["python", "scripts/make_dataset.py"]
+    outputs: [raw_data]
+
+  - name: validate
+    image: "${CONTAINER_REGISTRY}/itcs355:${IMAGE_TAG}"
+    command: ["pytest", "-q", "tests/test_data.py"]
+    depends_on: [ingest]
+    on_failure: abort
+    # Aborting here is the point. A pipeline that trains on data failing its own contract
+    # produces a model nobody should trust, and it will do so silently.
+
+  - name: train
+    image: "${CONTAINER_REGISTRY}/itcs355:${IMAGE_TAG}"
+    command: ["python", "-m", "src.train", "--metrics-out", "/outputs/metrics.json"]
+    depends_on: [validate]
+    instance: "${TRAIN_INSTANCE}"
+    spot: true
+    outputs: [model, metrics]
+
+  - name: evaluate
+    image: "${CONTAINER_REGISTRY}/itcs355:${IMAGE_TAG}"
+    command: ["python", "scripts/evaluation_gate.py", "--metrics", "/outputs/metrics.json"]
+    depends_on: [train]
+    outputs: [gate_decision]
+    # Writes "pass" or "fail" to the path the compiler passes as --decision-out. The step
+    # below branches on that value, so the gate is an edge in the DAG rather than a log
+    # line. Both branches are reachable and both have been exercised: candidate 0.8482
+    # against incumbent 0.8499 fails, candidate 0.8651 passes.
+
+  - name: register
+    image: "${CONTAINER_REGISTRY}/itcs355:${IMAGE_TAG}"
+    command: ["python", "scripts/register.py"]
+    depends_on: [evaluate]
+    condition: "gate_decision == 'pass'"
+    # The condition compiles to a real dsl.If block in the Vertex pipeline, and the
+    # compiled artifact carries a comp-condition component to prove it. The gate's floors
+    # are defended where they are defined, in scripts/evaluation_gate.py: 0.83 absolute,
+    # because a single sensor column scores 0.8257 and a model that loses to a spreadsheet
+    # should not be registered, and +0.01 improvement, because seed noise is sd 0.0087.
+
+  - name: deploy_staging
+    image: "${CONTAINER_REGISTRY}/itcs355:${IMAGE_TAG}"
+    command: ["python", "scripts/deploy.py", "--target", "staging"]
+    depends_on: [register]
+
+tags:
+  course: itcs355
+  student: "${PROJECT_ID}"
+  lab: "5"

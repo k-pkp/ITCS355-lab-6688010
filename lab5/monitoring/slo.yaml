@@ -1,0 +1,65 @@
+# Lab 4 — service level objectives.
+#
+# Most students write a target and stop. The third field is where the thinking is: an SLO
+# without a stated response to exhaustion is a wish, not an objective.
+#
+# All three targets below are deliberately modest. This service supports a maintenance
+# triage screen used by one team during working hours; it is not a payment path. Copying
+# a payment path's numbers would buy reliability nobody asked for with money that would
+# otherwise pay for the drift monitoring that this system actually needs.
+
+service: itcs355-predict
+
+objectives:
+  - name: availability
+    target: 0.99
+    window: 30d
+    measurement: "successful responses / total responses, excluding 4xx"
+    rationale: |
+      99% over 30 days is an error budget of 7.2 hours. The consumer is a triage screen a
+      technician refreshes while standing at a machine; when it fails they read the sensor
+      panel on the machine itself, which is what they did before this service existed. The
+      cost of an outage is inconvenience, not a stopped line, and three nines would mean
+      paying for redundancy that the failure mode does not justify.
+      4xx is excluded because a caller sending an out-of-range temperature is the schema
+      doing its job, and counting that as our unavailability would hide the 5xx that are
+      genuinely ours.
+    on_budget_exhausted: |
+      Freeze deploys of the service and of the model, both, and spend the next cycle on
+      whatever burned the budget. The freeze is the point: an error budget that never stops
+      a release is a metric, not a budget. If the budget is exhausted by a single long
+      incident rather than by a pattern, the freeze still holds, because "it was one bad
+      day" is exactly the sentence that precedes the second bad day.
+
+  - name: latency
+    target_p95_ms: 100
+    window: 7d
+    measurement: "p95 of /predict, measured at the endpoint, not at the client"
+    rationale: |
+      The same 100 ms written into loadtest/k6.js before any measurement was taken, and
+      the same number the model behaviour test's 15 ms budget is derived from. Measured at
+      the endpoint because the client-side figure includes the caller's network, which we
+      neither control nor can fix.
+      Measured configuration that meets it: 4 vCPU, 8 uvicorn workers, p95 93.9 ms at
+      concurrency 10 (reports/lab3-load.md).
+    on_budget_exhausted: |
+      Scale the worker count first — it was free the last time, taking p95 from 102.8 ms to
+      93.9 ms at the same 4 vCPU — then the instance, and only then look at the model. If
+      p95 has degraded without a traffic increase, suspect a model version with more or
+      deeper trees before suspecting the platform, and check that the serving process is
+      still setting n_jobs=1, because that regression alone cost 4x latency once already.
+
+  - name: freshness
+    target_max_model_age_days: 30
+    window: continuous
+    measurement: "days since the production model version was trained"
+    rationale: |
+      Kept consistent with the retraining schedule in pipeline/pipeline.yaml, which runs
+      weekly. A weekly pipeline against a 30-day ceiling leaves room for three consecutive
+      failed runs before the SLO is breached, which is the margin that makes the schedule
+      and the objective compatible rather than contradictory.
+    on_budget_exhausted: |
+      A model older than 30 days means the pipeline has been failing silently for a month,
+      so the incident is the pipeline, not the model. Page whoever owns the schedule, and
+      do NOT hand-train a replacement to clear the alarm — a manually produced model has no
+      lineage, and it would take the pressure off fixing the thing that actually broke.

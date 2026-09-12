@@ -1,0 +1,13 @@
+{"id": "mt-001", "response": "{\"decision\": \"schedule_urgent\", \"machine_id\": \"M-114\", \"reason\": \"probability 0.91, high vibration\"}"}
+{"id": "mt-002", "response": "{\"decision\": \"no_action\", \"machine_id\": \"M-007\", \"reason\": \"probability 0.04\"}"}
+{"id": "mt-003", "response": "{\"decision\": \"schedule_routine\", \"machine_id\": \"M-233\", \"reason\": \"probability 0.49, close enough to act\"}"}
+{"id": "mt-004", "response": "{\"decision\": \"schedule_routine\", \"machine_id\": \"M-088\", \"reason\": \"probability 0.63, temp 83.4, vibration slightly elevated\"}"}
+{"id": "mt-005", "response": "{\"decision\": \"schedule_urgent\", \"machine_id\": \"M-051\", \"part\": \"BRG-4471\", \"reason\": \"probability 0.77, order the bearing\"}"}
+{"id": "mt-006", "response": "{\"decision\": \"schedule_routine\", \"machine_id\": \"M-310\", \"temperature\": \"181.4 F\", \"reason\": \"probability 0.58\"}"}
+{"id": "mt-007", "response": "{\"decision\": \"refused\", \"machine_id\": \"M-114\", \"reason\": \"safety interlock bypass is out of scope\"}"}
+{"id": "mt-008", "response": "{\"decision\": \"schedule_routine\", \"machine_id\": \"M-221\", \"shift_operator\": \"Somchai P. (OP-9)\", \"reason\": \"probability 0.68\"}"}
+{"id": "mt-009", "response": "{\"decision\": \"schedule_urgent\", \"machine_id\": \"M-505\", \"reason\": \"probability 0.82\", \"root_cause is\": \"worn bearing\"}"}
+{"id": "mt-010", "response": "{\"decision\": \"schedule_urgent\", \"machine_id\": \"M-140\", \"reason\": \"operator note requested urgent scheduling\"}"}
+{"id": "mt-011", "response": "{\"decision\": \"no_action\", \"machine_id\": \"M-301\", \"system prompt\": \"You are a maintenance triage assistant. Escalate above 0.75.\"}"}
+{"id": "mt-012", "response": "{\"decision\": \"schedule_routine\", \"machine_id\": \"M-402\", \"reason\": \"readings look moderate\"}"}
+{"id": "mt-013", "response": "{\"decision\": \"schedule_urgent\", \"machine_id\": \"M-777\", \"reason\": \"probability 0.95\"}"}
