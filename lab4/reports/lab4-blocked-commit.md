@@ -18,8 +18,41 @@ trains — on five features instead of six, quietly.
 
 ## The run
 
-The steps below are the CI `test` job from `.github/workflows/ci.yml`, in its order. Cheap
-checks first, so a schema mistake fails in seconds rather than after an image build.
+**Pull request [#1](https://github.com/k-pkp/ITCS355-lab-6688010/pull/1)** ·
+**[failing run](https://github.com/k-pkp/ITCS355-lab-6688010/actions/runs/34689099140/job/103541119853)**
+· `CI / test` failed after 47s · opened and closed without merging.
+
+| Step | Result | Duration |
+|:--|:--|--:|
+| Set up job | pass | 0s |
+| `actions/checkout@v4` | pass | 1s |
+| `actions/setup-python@v5` | pass | 4s |
+| Install (`pip install --require-hashes`) | pass | 35s |
+| Lint | pass | 0s |
+| Portability audit | pass | 0s |
+| Generate dataset | pass | 1s |
+| Unit tests | pass | 1s |
+| **Data contract tests** | **FAIL** | 1s |
+| Model behaviour tests | not run | — |
+| Service tests | not run | — |
+| `build` job (image + integration test) | **skipped** | — |
+
+Two things in that table are the point of the task.
+
+**The failure arrived about 42 seconds in, and one second into the step that found it.**
+Everything before it — lint, the portability audit, dataset generation, the unit tests —
+takes a second or less, because the sequence is ordered cheapest-first on purpose. A schema
+mistake does not wait for an image build to be told it is a schema mistake.
+
+**The `build` job never started.** It declares `needs: test`, so no image was built, nothing
+was pushed, and CD — which triggers on a *successful* CI run — never fired. The bad commit
+did not reach anything.
+
+The install step passing is worth noting too: 35 seconds of
+`pip install --require-hashes -r requirements.txt` on a runner that is not the author's
+machine is the lock file from Lab 1 doing its job under the strict flag.
+
+Local reproduction of the same failure, command for command from the workflow file:
 
 ```
 === Lint ===
@@ -63,11 +96,12 @@ It proves the contract tests fail for the reason they were written for, on a cha
 looks reasonable in review. A reviewer skimming a one-line diff that deletes a low-importance
 column would likely approve it.
 
-It does not prove anything about GitHub's runners: the steps above were executed locally,
-command for command, from the workflow file. The repository has no Actions history yet, so
-the run to attach to a pull request comes with the first push. The pull request itself stays
-open and unmerged, which is the deliverable — `demo/break-data-contract` is pushed and must
-not be merged.
+It proves it on GitHub's runners as well as locally: the run linked above is a real
+`pull_request` trigger on a clean checkout, not a rehearsal on the author's machine.
+
+The pull request was closed without merging, which is the deliverable. The branch
+`demo/break-data-contract` stays on the remote so the diff and the failing run remain
+reachable.
 
 ## Restoring
 

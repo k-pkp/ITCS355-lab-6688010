@@ -89,8 +89,14 @@ tests/test_data.py:35: AssertionError
 
 Three tests failed and the order matters: the schema test *names* the problem, the other two
 fail with a bare `KeyError` because they look up a column that is not there. A suite where
-only the `KeyError`s fired would tell you something broke without telling you what. Nothing
-downstream runs — `build` needs `test`, so no image is built and CD never triggers.
+only the `KeyError`s fired would tell you something broke without telling you what.
+
+On GitHub's runners this was **[pull request #1](https://github.com/k-pkp/ITCS355-lab-6688010/pull/1)**,
+**[run 34689099140](https://github.com/k-pkp/ITCS355-lab-6688010/actions/runs/34689099140/job/103541119853)**
+— `CI / test` failed after 47s, the failure landing one second into the data contract step
+and about forty seconds into the job. The `build` job was **skipped**: it declares
+`needs: test`, so no image was built, nothing was pushed, and CD never fired. The pull
+request was closed without merging.
 
 ---
 

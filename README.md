@@ -14,7 +14,7 @@ on its own.
 | 1 | [`lab1/`](lab1) | Reproducible training container | [README claim](lab1/README.md) · [`Dockerfile`](lab1/Dockerfile) · [`requirements.txt`](lab1/requirements.txt) |
 | 2 | [`lab2/`](lab2) | Budgeted study, verified prices, registry lineage | [`lab2-comparison.md`](lab2/reports/lab2-comparison.md) |
 | 3 | [`lab3/`](lab3) | Service, load matrix, canary and rollback | [`lab3-load.md`](lab3/reports/lab3-load.md) · [`lab3-canary.md`](lab3/reports/lab3-canary.md) |
-| 4 | [`lab4/`](lab4) | CI/CD, drift, the blocked bad commit | [`lab4-drift.md`](lab4/reports/lab4-drift.md) · [`lab4-postmortem.md`](lab4/reports/lab4-postmortem.md) · [`lab4-blocked-commit.md`](lab4/reports/lab4-blocked-commit.md) |
+| 4 | [`lab4/`](lab4) | CI/CD, drift, the [blocked bad commit](https://github.com/k-pkp/ITCS355-lab-6688010/pull/1) | [`lab4-drift.md`](lab4/reports/lab4-drift.md) · [`lab4-postmortem.md`](lab4/reports/lab4-postmortem.md) · [`lab4-blocked-commit.md`](lab4/reports/lab4-blocked-commit.md) |
 | 5 | [`lab5/`](lab5) | Pipeline gate, cost, portability, LLM gate | [`lab5-cost.md`](lab5/reports/lab5-cost.md) · [`lab5-portability.md`](lab5/reports/lab5-portability.md) · [`lab5-llm.md`](lab5/reports/lab5-llm.md) |
 
 ## Grading
