@@ -52,6 +52,33 @@ The install step passing is worth noting too: 35 seconds of
 `pip install --require-hashes -r requirements.txt` on a runner that is not the author's
 machine is the lock file from Lab 1 doing its job under the strict flag.
 
+### What the runner printed
+
+Verbatim from the **Data contract tests** step of
+[run 34689099140](https://github.com/k-pkp/ITCS355-lab-6688010/actions/runs/34689099140/job/103541119853):
+
+```
+>       raise KeyError(key) from err
+E       KeyError: 'ambient_humidity'
+
+/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/pandas/core/indexes/base.py:3648: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_data.py::test_schema_columns_present_and_typed - AssertionError: missing columns: ['ambient_humidity']
+assert not {'ambient_humidity'}
+FAILED tests/test_data.py::test_no_nulls_in_required_columns - KeyError: "['ambient_humidity'] not in index"
+FAILED tests/test_data.py::test_features_within_plausible_ranges - KeyError: 'ambient_humidity'
+3 failed, 7 passed in 0.76s
+Error: Process completed with exit code 1.
+```
+
+`AssertionError: missing columns: ['ambient_humidity']` is the line that does the work. The
+other two failures are the same missing column surfacing as a `KeyError` in tests that
+assumed it was there — useful confirmation, useless as diagnosis. If the suite had contained
+only those two, CI would have gone red while telling nobody what was wrong.
+
+`Process completed with exit code 1` is what stops the pipeline: the `build` job needs
+`test`, so it never starts.
+
 Local reproduction of the same failure, command for command from the workflow file:
 
 ```
