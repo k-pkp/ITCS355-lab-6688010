@@ -218,11 +218,16 @@ def main() -> int:
 
 
 def generate_live(golden: list[dict]) -> list[dict]:
-    """TODO(Lab 5): route each prompt through your adapter's `generate`.
+    """Route every golden prompt through the adapter's `generate`, recording real usage.
 
-    Record input_tokens, output_tokens and latency_ms from the provider's own usage
-    fields — do not estimate them by counting words. Every provider tokenises
-    differently, and an estimated token count in a cost report is a fabricated number.
+    input_tokens, output_tokens and latency_ms come from the provider's own usage fields,
+    never from counting words: every provider tokenises differently, and an estimated
+    token count in a cost report is a fabricated number.
+
+    This is what `make llm-record` runs. It costs money and needs the Vertex AI API, which
+    is why the committed fixtures are recorded rather than regenerated on every commit —
+    a gate that costs money and returns something different each time is a gate nobody
+    keeps.
     """
     from src import config
     from cloudlayer.factory import get_adapter
