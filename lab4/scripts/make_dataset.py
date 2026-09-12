@@ -70,6 +70,11 @@ def main() -> None:
 
     frame = build(options.seed)
     options.out.parent.mkdir(parents=True, exist_ok=True)
+    # DELIBERATELY BROKEN, for Lab 4 Task 3. A plausible-looking "cleanup": ambient
+    # humidity reads noisy and carries only 4.9% of the model's importance, so someone
+    # drops it from the export to save a column. The generator still runs, the file still
+    # loads, and nothing complains until a test asserts the schema.
+    frame = frame.drop(columns=["ambient_humidity"])
     frame.to_csv(options.out, index=False, lineterminator="\n")
     rate = frame["failed_within_7d"].mean()
     print(f"wrote {options.out}  rows={len(frame)}  machines={frame.machine_id.nunique()}  positive_rate={rate:.3f}")
