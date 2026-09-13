@@ -29,3 +29,8 @@ data/current*.csv
 
 # Transient: the pipeline gate writes its decision here for the conditional step to read.
 reports/gate_decision.txt
+
+# Local study notes (one PDF per lab). Never pushed.
+# Anchored with a leading slash on purpose: every lab folder has its own committed docs/
+# (the post-mortem template, the repo guide), and a bare `docs/` would ignore those too.
+/docs/
